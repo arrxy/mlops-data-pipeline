@@ -11,12 +11,9 @@ WORKDIR /app
 COPY rclone.conf /root/.config/rclone/rclone.conf
 
 RUN pip install --no-cache-dir \
-    datasets \
     boto3 \
-    huggingface_hub \
-    psycopg2-binary
+    qdrant-client
 
-COPY version.py .
-COPY data-ingestor/ingest.py .
+COPY vector-indexer/index_vectors.py .
 
-CMD ["python", "ingest.py"]
+CMD ["python", "index_vectors.py"]

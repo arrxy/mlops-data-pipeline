@@ -12,13 +12,24 @@ import zipfile
 from datetime import datetime, timezone
 
 import boto3
+import psycopg2
 from botocore.client import Config
 from huggingface_hub import hf_hub_download
+from version import resolve_version
 
 BUCKET = "ObjStore_proj24"
-PREFIX = "raw/v1"
 S3_ENDPOINT = "https://chi.tacc.chameleoncloud.org:7480"
 HF_REPO = "ar10067/flickr30k-images-CFQ"
+
+
+def get_pg_conn():
+    return psycopg2.connect(
+        host=os.environ.get("POSTGRES_HOST", "postgres"),
+        port=int(os.environ.get("POSTGRES_PORT", 5432)),
+        dbname=os.environ.get("POSTGRES_DB", "mlops"),
+        user=os.environ.get("POSTGRES_USER", "mlops"),
+        password=os.environ.get("POSTGRES_PASSWORD", "mlops"),
+    )
 
 
 def get_s3_client():
@@ -32,6 +43,10 @@ def get_s3_client():
 
 
 def main():
+    version, commit_sha = resolve_version()
+    prefix = f"raw/{version}"
+    print(f"Dataset version: {version} → s3://{BUCKET}/{prefix}/")
+
     print(f"Downloading unified_dataset.json from {HF_REPO}...")
     local_path = hf_hub_download(
         repo_id=HF_REPO,
@@ -65,17 +80,17 @@ def main():
     s3 = get_s3_client()
 
     # Upload original JSON
-    json_key = f"{PREFIX}/unified_dataset.json"
+    json_key = f"{prefix}/unified_dataset.json"
     print(f"Uploading s3://{BUCKET}/{json_key} ({len(raw_bytes):,} bytes)...")
     s3.put_object(Bucket=BUCKET, Key=json_key, Body=raw_bytes)
 
     # Upload JSONL version
-    jsonl_key = f"{PREFIX}/unified_dataset.jsonl"
+    jsonl_key = f"{prefix}/unified_dataset.jsonl"
     print(f"Uploading s3://{BUCKET}/{jsonl_key} ({len(jsonl_bytes):,} bytes)...")
     s3.put_object(Bucket=BUCKET, Key=jsonl_key, Body=jsonl_bytes)
 
     # Upload images zip
-    zip_key = f"{PREFIX}/flickr30k-images.zip"
+    zip_key = f"{prefix}/flickr30k-images.zip"
     zip_size = os.path.getsize(zip_path)
     print(f"Uploading s3://{BUCKET}/{zip_key} ({zip_size:,} bytes)...")
     with open(zip_path, "rb") as f:
@@ -91,21 +106,56 @@ def main():
             filename = os.path.basename(entry.filename)
             if not filename:
                 continue
-            img_key = f"{PREFIX}/images/{filename}"
+            img_key = f"{prefix}/images/{filename}"
             with zf.open(entry) as img_file:
                 s3.put_object(Bucket=BUCKET, Key=img_key, Body=img_file.read())
             image_keys.append(img_key)
             if i % 500 == 0 or i == total:
                 print(f"  {i}/{total} images uploaded.")
 
+    # Write image metadata to PostgreSQL
+    print("Writing image metadata to PostgreSQL...")
+    ingested_at = datetime.now(timezone.utc)
+    conn = get_pg_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO image_metadata (image_id, split, source, source_commit_sha, dataset_version, ingested_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (image_id) DO UPDATE
+                    SET split = EXCLUDED.split,
+                        source_commit_sha = EXCLUDED.source_commit_sha,
+                        dataset_version = EXCLUDED.dataset_version,
+                        ingested_at = EXCLUDED.ingested_at
+                """,
+                [
+                    (
+                        r["image_id"],
+                        r.get("split", "train"),
+                        HF_REPO,
+                        commit_sha,
+                        version,
+                        ingested_at,
+                    )
+                    for r in records
+                ],
+            )
+        conn.commit()
+        print(f"  Wrote {len(records):,} rows to image_metadata.")
+    finally:
+        conn.close()
+
     marker = {
         "completed_at": datetime.now(timezone.utc).isoformat(),
+        "version": version,
         "record_count": len(records),
         "source": HF_REPO,
+        "source_commit_sha": commit_sha,
         "image_count": len(image_keys),
         "files": [json_key, jsonl_key, zip_key],
     }
-    marker_key = f"{PREFIX}/ingest_done.json"
+    marker_key = f"{prefix}/ingest_done.json"
     print(f"Writing completion marker s3://{BUCKET}/{marker_key}...")
     s3.put_object(
         Bucket=BUCKET,

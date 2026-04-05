@@ -20,9 +20,9 @@ from huggingface_hub import hf_hub_download
 from PIL import Image
 import torch
 from transformers import CLIPProcessor, CLIPModel
+from version import resolve_version
 
 BUCKET = "ObjStore_proj24"
-PREFIX = "embeddings/v1"
 S3_ENDPOINT = "https://chi.tacc.chameleoncloud.org:7480"
 HF_REPO = "ar10067/flickr30k-images-CFQ"
 CLIP_MODEL_NAME = "openai/clip-vit-base-patch32"
@@ -40,6 +40,11 @@ def get_s3_client():
 
 
 def main():
+    version, commit_sha = resolve_version()
+    prefix = f"embeddings/{version}"
+    raw_prefix = f"raw/{version}"
+    print(f"Dataset version: {version} → s3://{BUCKET}/{prefix}/")
+
     print(f"Downloading unified_dataset.json from {HF_REPO}...")
     meta_path = hf_hub_download(
         repo_id=HF_REPO,
@@ -110,14 +115,18 @@ def main():
 
     manifest = {
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "version": version,
+        "source_commit_sha": commit_sha,
         "model": CLIP_MODEL_NAME,
         "embedding_dim": 512,
         "num_embeddings": len(embeddings),
+        "source": HF_REPO,
+        "derived_from": f"s3://{BUCKET}/{raw_prefix}/",
     }
 
     s3 = get_s3_client()
 
-    embeddings_key = f"{PREFIX}/embeddings.json"
+    embeddings_key = f"{prefix}/embeddings.json"
     print(f"Uploading s3://{BUCKET}/{embeddings_key}...")
     s3.put_object(
         Bucket=BUCKET,
@@ -125,7 +134,7 @@ def main():
         Body=json.dumps(embeddings).encode("utf-8"),
     )
 
-    manifest_key = f"{PREFIX}/manifest.json"
+    manifest_key = f"{prefix}/manifest.json"
     s3.put_object(
         Bucket=BUCKET,
         Key=manifest_key,

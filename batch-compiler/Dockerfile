@@ -13,8 +13,10 @@ COPY rclone.conf /root/.config/rclone/rclone.conf
 RUN pip install --no-cache-dir \
     datasets \
     boto3 \
-    huggingface_hub
+    huggingface_hub \
+    psycopg2-binary
 
+COPY version.py .
 COPY batch-compiler/compile.py .
 
 CMD ["python", "compile.py"]

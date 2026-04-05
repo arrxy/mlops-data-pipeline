@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir \
     transformers \
     Pillow
 
+COPY version.py .
 COPY feature-worker/compute_features.py .
 
 CMD ["python", "compute_features.py"]
