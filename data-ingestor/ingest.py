@@ -36,6 +36,7 @@ def main():
         repo_id=HF_REPO,
         filename="unified_dataset.json",
         repo_type="dataset",
+        token=os.environ.get("HF_TOKEN"),
     )
     print(f"Downloaded to {local_path}")
 

@@ -45,6 +45,7 @@ def main():
         repo_id=HF_REPO,
         filename="unified_dataset.json",
         repo_type="dataset",
+        token=os.environ.get("HF_TOKEN"),
     )
     with open(meta_path) as f:
         records = json.load(f)
@@ -55,6 +56,7 @@ def main():
         repo_id=HF_REPO,
         filename="flickr30k-images.zip",
         repo_type="dataset",
+        token=os.environ.get("HF_TOKEN"),
     )
     print(f"Downloaded zip to {zip_path}")
 

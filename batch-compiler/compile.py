@@ -85,6 +85,7 @@ def main():
         repo_id=HF_REPO,
         filename="unified_dataset.json",
         repo_type="dataset",
+        token=os.environ.get("HF_TOKEN"),
     )
     with open(local_path) as f:
         records = json.load(f)
