@@ -94,7 +94,8 @@ def main():
 
             pixel_values = processor(images=img, return_tensors="pt")["pixel_values"]
             with torch.no_grad():
-                features = model.get_image_features(pixel_values=pixel_values)
+                vision_outputs = model.vision_model(pixel_values=pixel_values)
+                features = model.visual_projection(vision_outputs.pooler_output)
                 features = features / features.norm(dim=-1, keepdim=True)
 
             embedding_vec = features.squeeze(0).tolist()
