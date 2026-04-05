@@ -92,9 +92,9 @@ def main():
                 print(f"  WARNING: {image_id} not found in zip, using blank image.")
                 img = Image.new("RGB", (224, 224), color=(128, 128, 128))
 
-            inputs = processor(images=img, return_tensors="pt")
+            pixel_values = processor(images=img, return_tensors="pt")["pixel_values"]
             with torch.no_grad():
-                features = model.get_image_features(**inputs)
+                features = model.get_image_features(pixel_values=pixel_values)
                 features = features / features.norm(dim=-1, keepdim=True)
 
             embedding_vec = features.squeeze(0).tolist()
