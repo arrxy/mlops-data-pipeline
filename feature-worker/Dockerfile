@@ -11,10 +11,11 @@ WORKDIR /app
 COPY rclone.conf /root/.config/rclone/rclone.conf
 
 RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
     datasets \
     boto3 \
     huggingface_hub \
-    torch --index-url https://download.pytorch.org/whl/cpu \
+    torch \
     transformers \
     Pillow
 
