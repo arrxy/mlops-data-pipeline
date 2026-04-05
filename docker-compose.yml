@@ -1,0 +1,24 @@
+services:
+  data-ingestor:
+    build:
+      context: .
+      dockerfile: data-ingestor/Dockerfile
+    env_file: .env
+
+  data-generator:
+    build:
+      context: .
+      dockerfile: data-generator/Dockerfile
+    env_file: .env
+
+  feature-worker:
+    build:
+      context: .
+      dockerfile: feature-worker/Dockerfile
+    env_file: .env
+
+  batch-compiler:
+    build:
+      context: .
+      dockerfile: batch-compiler/Dockerfile
+    env_file: .env
