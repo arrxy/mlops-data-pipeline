@@ -8,6 +8,7 @@ Writes a completion marker ingest_done.json.
 import json
 import os
 import io
+import zipfile
 from datetime import datetime, timezone
 
 import boto3
@@ -52,6 +53,15 @@ def main():
         buf.write((json.dumps(record) + "\n").encode("utf-8"))
     jsonl_bytes = buf.getvalue()
 
+    print(f"Downloading flickr30k-images.zip from {HF_REPO}...")
+    zip_path = hf_hub_download(
+        repo_id=HF_REPO,
+        filename="flickr30k-images.zip",
+        repo_type="dataset",
+        token=os.environ.get("HF_TOKEN"),
+    )
+    print(f"Downloaded to {zip_path}")
+
     s3 = get_s3_client()
 
     # Upload original JSON
@@ -64,11 +74,36 @@ def main():
     print(f"Uploading s3://{BUCKET}/{jsonl_key} ({len(jsonl_bytes):,} bytes)...")
     s3.put_object(Bucket=BUCKET, Key=jsonl_key, Body=jsonl_bytes)
 
+    # Upload images zip
+    zip_key = f"{PREFIX}/flickr30k-images.zip"
+    zip_size = os.path.getsize(zip_path)
+    print(f"Uploading s3://{BUCKET}/{zip_key} ({zip_size:,} bytes)...")
+    with open(zip_path, "rb") as f:
+        s3.put_object(Bucket=BUCKET, Key=zip_key, Body=f)
+
+    # Extract and upload individual images
+    print("Extracting and uploading individual images...")
+    image_keys = []
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        entries = [e for e in zf.infolist() if not e.is_dir()]
+        total = len(entries)
+        for i, entry in enumerate(entries, 1):
+            filename = os.path.basename(entry.filename)
+            if not filename:
+                continue
+            img_key = f"{PREFIX}/images/{filename}"
+            with zf.open(entry) as img_file:
+                s3.put_object(Bucket=BUCKET, Key=img_key, Body=img_file.read())
+            image_keys.append(img_key)
+            if i % 500 == 0 or i == total:
+                print(f"  {i}/{total} images uploaded.")
+
     marker = {
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "record_count": len(records),
         "source": HF_REPO,
-        "files": [json_key, jsonl_key],
+        "image_count": len(image_keys),
+        "files": [json_key, jsonl_key, zip_key],
     }
     marker_key = f"{PREFIX}/ingest_done.json"
     print(f"Writing completion marker s3://{BUCKET}/{marker_key}...")
