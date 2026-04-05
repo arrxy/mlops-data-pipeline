@@ -56,3 +56,23 @@ CREATE TABLE IF NOT EXISTS feedback_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_events_query_id ON feedback_events(query_id);
+
+-- ---------------------------------------------------------------------------
+-- feature_jobs
+-- PostgreSQL-backed async job queue for online feature computation.
+-- A job is submitted when a new image arrives; the online-feature-worker
+-- daemon picks it up, computes the CLIP embedding, and writes it to Qdrant.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS feature_jobs (
+    job_id       UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    image_id     VARCHAR(255) NOT NULL,
+    s3_key       TEXT         NOT NULL,
+    status       VARCHAR(20)  NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending', 'processing', 'done', 'failed')),
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    started_at   TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    error        TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_feature_jobs_status ON feature_jobs(status);

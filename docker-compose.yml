@@ -65,6 +65,17 @@ services:
     depends_on:
       - qdrant
 
+  online-feature-worker:
+    build:
+      context: .
+      dockerfile: online-feature-worker/Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
 volumes:
   postgres_data:
   qdrant_storage:
