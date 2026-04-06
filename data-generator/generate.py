@@ -11,6 +11,7 @@ import json
 import os
 import io
 import random
+import string
 import time
 import uuid
 from datetime import datetime, timezone
@@ -25,6 +26,10 @@ from version import resolve_version
 BUCKET = "ObjStore_proj24"
 S3_ENDPOINT = "https://chi.tacc.chameleoncloud.org:7480"
 HF_REPO = "ar10067/flickr30k-images-CFQ"
+
+def random_run_id(n=8) -> str:
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=n))
+
 
 DURATION_SECONDS = 120
 TARGET_RPS = 10          # mean of Poisson distribution
@@ -112,6 +117,7 @@ def write_event_to_pg(cur, event):
 
 def main():
     dataset_version, commit_sha = resolve_version()
+    run_id = random_run_id()
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     print(f"Downloading unified_dataset.json from {HF_REPO}...")
@@ -177,11 +183,12 @@ def main():
     buf.seek(0)
 
     s3 = get_s3_client()
-    snapshot_key = f"interactions/{dataset_version}/{run_ts}/interactions_snapshot.jsonl"
+    snapshot_key = f"interactions/{run_id}/{run_ts}/interactions_snapshot.jsonl"
     print(f"Uploading snapshot s3://{BUCKET}/{snapshot_key}...")
     s3.put_object(Bucket=BUCKET, Key=snapshot_key, Body=buf.read())
 
     meta = {
+        "run_id": run_id,
         "run_timestamp": run_ts,
         "dataset_version": dataset_version,
         "source_commit_sha": commit_sha,
@@ -192,7 +199,7 @@ def main():
         "event_count": len(events),
         "snapshot_key": snapshot_key,
     }
-    meta_key = f"interactions/{dataset_version}/{run_ts}/meta.json"
+    meta_key = f"interactions/{run_id}/{run_ts}/meta.json"
     s3.put_object(Bucket=BUCKET, Key=meta_key, Body=json.dumps(meta, indent=2).encode("utf-8"))
     print("Done.")
 
