@@ -21,5 +21,6 @@ RUN pip install --no-cache-dir \
 
 COPY online-feature-worker/worker.py .
 COPY online-feature-worker/submit_job.py .
+COPY online-feature-worker/batch_submit.py .
 
 CMD ["python", "worker.py"]
