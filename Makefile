@@ -17,7 +17,15 @@ features:
 
 compile:
 	docker compose up -d postgres
-	docker compose run --rm batch-compiler
+	docker compose run --rm batch-compiler python compile.py --source interactions
+
+compile-static:
+	docker compose up -d postgres
+	docker compose run --rm batch-compiler python compile.py --source static
+
+compile-all:
+	docker compose up -d postgres
+	docker compose run --rm batch-compiler python compile.py --source static-interactions
 
 index:
 	docker compose up -d qdrant
@@ -27,7 +35,7 @@ worker:
 	docker compose up -d postgres qdrant
 	docker compose up online-feature-worker
 
-init: build ingest features index
+init: build ingest features index compile-static
 	@echo "Initial pipeline complete."
 
 retrain: generate compile

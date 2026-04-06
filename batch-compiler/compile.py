@@ -149,11 +149,21 @@ def export_interaction_snapshot(tuples: list, prefix: str, s3) -> None:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--source",
+        choices=["static", "interactions", "static-interactions"],
+        default="static-interactions",
+        help="Data source: static (HF only), interactions (Postgres only), or both (default)",
+    )
+    args = parser.parse_args()
+
     version, commit_sha = resolve_version()
     prefix = f"datasets/{version}"
     raw_prefix = f"raw/{version}"
     created_at = datetime.now(timezone.utc).isoformat()
-    print(f"Dataset version: {version} → s3://{BUCKET}/{prefix}/")
+    print(f"Dataset version: {version} → s3://{BUCKET}/{prefix}/  [source: {args.source}]")
 
     print(f"Downloading unified_dataset.json from {HF_REPO}...")
     local_path = hf_hub_download(
@@ -170,30 +180,33 @@ def main():
     splits: dict[str, list] = {"train": [], "val": [], "test": []}
 
     # --- Source 1: Static HuggingFace dataset ---
-    print("Building tuples from static dataset...")
-    for record in records:
-        pos_id = record["image_id"]
-        split = image_id_split(pos_id)
-        for query_text, query_type in iter_queries(record):
-            neg_id = pos_id
-            while neg_id == pos_id:
-                neg_id = random.choice(all_image_ids)
-            splits[split].append({
-                "query": query_text,
-                "positive_id": pos_id,
-                "negative_id": neg_id,
-                "query_type": query_type,
-                "source": "flickr30k_cfq",
-                "dataset_version": version,
-                "created_at": created_at,
-            })
+    if args.source in ("static", "static-interactions"):
+        print("Building tuples from static dataset...")
+        for record in records:
+            pos_id = record["image_id"]
+            split = image_id_split(pos_id)
+            for query_text, query_type in iter_queries(record):
+                neg_id = pos_id
+                while neg_id == pos_id:
+                    neg_id = random.choice(all_image_ids)
+                splits[split].append({
+                    "query": query_text,
+                    "positive_id": pos_id,
+                    "negative_id": neg_id,
+                    "query_type": query_type,
+                    "source": "flickr30k_cfq",
+                    "dataset_version": version,
+                    "created_at": created_at,
+                })
 
     # --- Source 2: Interaction logs from PostgreSQL ---
-    print("Loading interaction-derived tuples from PostgreSQL...")
-    interaction_tuples = load_interaction_tuples(all_image_ids, created_at, version)
-    for t in interaction_tuples:
-        split = image_id_split(t["positive_id"])
-        splits[split].append(t)
+    interaction_tuples = []
+    if args.source in ("interactions", "static-interactions"):
+        print("Loading interaction-derived tuples from PostgreSQL...")
+        interaction_tuples = load_interaction_tuples(all_image_ids, created_at, version)
+        for t in interaction_tuples:
+            split = image_id_split(t["positive_id"])
+            splits[split].append(t)
 
     # --- Leakage check ---
     train_ids = {t["positive_id"] for t in splits["train"]}
@@ -234,6 +247,7 @@ def main():
             "test": round(1 - TRAIN_RATIO - VAL_RATIO, 2),
         },
         "counts": {k: len(v) for k, v in splits.items()},
+        "data_source": args.source,
         "interaction_tuples": len(interaction_tuples),
         "leakage_check": "passed",
     }
